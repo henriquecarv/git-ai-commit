@@ -1,0 +1,173 @@
+#!/usr/bin/env sh
+
+set -u
+
+ISSUE_PREFIX="AB#"
+BODY_LINE_LENGTH=100
+AGENT_PROMPT="Write a Conventional Commits message for this diff. Output only the message, with this structure:
+
+1. Subject (first line): <type>[optional scope]: <imperative summary>. Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore. No period at end; keep under 72 characters when possible.
+2. Blank line, then body: one or more paragraphs separated by blank lines. Explain what changed and why—not a file list. Wrap so no line exceeds $BODY_LINE_LENGTH characters.
+3. Blank line, then footers (if applicable): one key-value pair per line (e.g. Refs: #123, Co-authored-by:, Breaking-Change:). Omit footers you cannot infer from the diff; do not invent reviewers or issue numbers.
+
+Example shape:
+fix: prevent racing of requests
+
+Introduce a request id and dismiss stale responses.
+
+Remove obsolete timeouts that mitigated the race.
+
+Refs: #123
+
+Output only the commit message."
+
+usage() {
+  cat <<'EOF'
+Usage:
+  git-ai-commit setup              Configure core.editor and git ai-commit alias
+  git-ai-commit [issue-id]         Generate commit message from staged diff
+  git-ai-commit --help             Show this help
+
+After setup, use: git ai-commit [issue-id]
+
+Examples:
+  git-ai-commit setup
+  git ai-commit
+  git ai-commit 12345
+  git ai-commit AB#12345
+EOF
+}
+
+# --- Staged diff (lockfiles excluded) ----------------------------------------
+
+capture_staged_diff() {
+  diff_file=$(mktemp) || {
+    printf 'git-ai-commit: mktemp failed\n' >&2
+    exit 1
+  }
+  git diff --staged -- . \
+    ':(exclude)package-lock.json' \
+    ':(exclude)yarn.lock' \
+    ':(exclude)pnpm-lock.yaml' >"$diff_file" 2>/dev/null
+
+  if [ ! -s "$diff_file" ]; then
+    printf 'git-ai-commit: no staged changes to summarize (lockfiles excluded)\n' >&2
+    rm -f "$diff_file"
+    exit 1
+  fi
+}
+
+# --- Cursor Agent (ask mode, diff in prompt) ---------------------------------
+
+show_loading_spinner() {
+  agent_pid=$1
+  spin_i=0
+  while kill -0 "$agent_pid" 2>/dev/null; do
+    case $spin_i in
+      0) c='|' ;;
+      1) c='/' ;;
+      2) c='-' ;;
+      3) c='.' ;;
+    esac
+    spin_i=$(( (spin_i + 1) % 4 ))
+    printf '\rLoading commit message... %s  ' "$c" >&2
+    sleep 0.12
+  done
+  printf '\r\033[K' >&2
+}
+
+generate_commit_message() {
+  msg_file=$(mktemp) || {
+    rm -f "$diff_file"
+    printf 'git-ai-commit: mktemp failed\n' >&2
+    exit 1
+  }
+
+  (
+    prompt=$(printf '%s\n\n%s\n%s\n' \
+      "$AGENT_PROMPT" \
+      'Staged diff:' \
+      "$(cat "$diff_file")")
+    cursor agent -p --trust --mode ask --model auto "$prompt" >"$msg_file"
+  ) &
+  agent_pid=$!
+
+  show_loading_spinner "$agent_pid"
+  wait "$agent_pid"
+  agent_status=$?
+
+  msg=$(cat "$msg_file")
+  rm -f "$msg_file" "$diff_file"
+
+  if [ "$agent_status" -ne 0 ]; then
+    printf 'git-ai-commit: cursor agent failed\n' >&2
+    exit "$agent_status"
+  fi
+  if [ -z "$(printf '%s' "$msg" | tr -d '[:space:]')" ]; then
+    printf 'git-ai-commit: empty message from agent\n' >&2
+    exit 1
+  fi
+}
+
+# --- Message formatting -------------------------------------------------------
+
+split_title_and_body() {
+  title=$(printf '%s\n' "$msg" | head -n 1)
+  body=$(printf '%s\n' "$msg" | tail -n +2)
+}
+
+wrap_body_to_100_cols() {
+  body=$(printf '%s\n' "$body" | while IFS= read -r line || [ -n "$line" ]; do
+    if [ -z "$(printf '%s' "$line" | tr -d '[:space:]')" ]; then
+      printf '\n'
+    else
+      printf '%s\n' "$line" | fold -s -w 100
+    fi
+  done)
+}
+
+append_issue_to_title() {
+  if [ -z "$issue_id" ]; then
+    return 0
+  fi
+  case $issue_id in
+    $ISSUE_PREFIX*) ref=$issue_id ;;
+    *) ref="$ISSUE_PREFIX$issue_id" ;;
+  esac
+  title="$title ($ref)"
+}
+
+# --- Commit (editor review + verbose diff) ------------------------------------
+
+run_commit_with_editor() {
+  if [ -n "$(printf '%s' "$body" | tr -d '[:space:]')" ]; then
+    git commit -ve -m "$title" -m "$body"
+  else
+    git commit -ve -m "$title"
+  fi
+}
+
+run_commit_flow() {
+  issue_id=${1:-}
+
+  capture_staged_diff
+  generate_commit_message
+  split_title_and_body
+  wrap_body_to_100_cols
+  append_issue_to_title
+  run_commit_with_editor
+}
+
+# --- Main ---------------------------------------------------------------------
+
+case "${1:-}" in
+  setup)
+    exec "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/setup"
+    ;;
+  -h|--help|help)
+    usage
+    ;;
+  *)
+    run_commit_flow "$@"
+    ;;
+esac

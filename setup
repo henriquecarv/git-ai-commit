@@ -1,0 +1,43 @@
+#!/usr/bin/env sh
+
+set -u
+
+if ! command -v git >/dev/null 2>&1; then
+  printf 'setup: git not found on PATH\n' >&2
+  exit 1
+fi
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+sibling_commit="$script_dir/git-ai-commit"
+
+if command -v git-ai-commit >/dev/null 2>&1; then
+  alias_value='!git-ai-commit'
+else
+  if [ ! -x "$sibling_commit" ]; then
+    printf 'setup: git-ai-commit not found on PATH or at %s\n' "$sibling_commit" >&2
+    exit 1
+  fi
+  alias_value="!\"$sibling_commit\""
+fi
+
+current_editor=$(git config --global core.editor 2>/dev/null || true)
+default_editor=${current_editor:-vim}
+
+printf 'Configure Git for git-ai-commit.\n'
+printf 'Examples: vim, nano, code --wait, cursor --wait\n'
+printf 'Git editor [%s]: ' "$default_editor"
+IFS= read -r editor
+editor=${editor:-$default_editor}
+
+if [ -z "$(printf '%s' "$editor" | tr -d '[:space:]')" ]; then
+  printf 'setup: editor cannot be empty\n' >&2
+  exit 1
+fi
+
+git config --global core.editor "$editor"
+git config --global alias.ai-commit "$alias_value"
+
+printf '\nConfigured:\n'
+printf '  core.editor = %s\n' "$editor"
+printf '  alias.ai-commit = %s\n' "$alias_value"
+printf '\nUse: git ai-commit\n'
