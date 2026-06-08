@@ -1,6 +1,6 @@
 # Git AI Commit
 
-Generate a **Conventional Commits** message from your staged diff using the [Cursor](https://cursor.com) Agent, then open your Git editor for review before committing.
+Generate a **Conventional Commits** message from your staged diff using the [Cursor](https://cursor.com) Agent (default) or [Foundry Local](https://github.com/microsoft/Foundry-Local) (optional, on-device), then open your Git editor for review before committing.
 
 Works on **macOS**, **Linux**, and **Windows** (via [Git for Windows](https://git-scm.com/download/win) Bash, MSYS2, or WSL).
 
@@ -24,14 +24,15 @@ Works on **macOS**, **Linux**, and **Windows** (via [Git for Windows](https://gi
 
 ## Prerequisites
 
-| Requirement        | Notes                                                            |
-| ------------------ | ---------------------------------------------------------------- |
-| **Git** 2.x+       | Alias support required                                           |
-| **POSIX shell**    | Provided by macOS/Linux natively; on Windows use Git Bash or WSL |
-| **Cursor CLI**     | `cursor` on `PATH`; `cursor agent` must work (logged in)         |
-| **Staged changes** | Run `git add` before `git ai-commit`                             |
+| Requirement        | Notes                                                                                                            |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| **Git** 2.x+       | Alias support required                                                                                           |
+| **POSIX shell**    | Provided by macOS/Linux natively; on Windows use Git Bash or WSL                                                 |
+| **Cursor CLI**     | Default backend: `cursor` on `PATH`; `cursor agent` must work (logged in)                                        |
+| **Foundry Local**  | Optional backend when `GIT_AI_COMMIT_PROVIDER=foundry`; see [Foundry Local setup](#foundry-local-setup-optional) |
+| **Staged changes** | Run `git add` before `git ai-commit`                                                                             |
 
-Verify the CLI (same on all platforms):
+Verify the Cursor CLI (default backend):
 
 ```bash
 cursor --version
@@ -187,6 +188,39 @@ cd ~/.config/git/git-ai-commit && git pull
 
 The script already passes `-v` to `git commit`; this setting keeps verbose commits consistent for manual commits too.
 
+## Foundry Local setup (optional)
+
+Use [Foundry Local](https://github.com/microsoft/Foundry-Local) to generate commit messages **entirely on your device** instead of the Cursor agent. Install via the [Homebrew tap](https://github.com/microsoft/homebrew-foundrylocal) on macOS:
+
+```bash
+brew tap microsoft/foundrylocal
+brew install foundrylocal
+foundry model download phi-4-mini
+foundry model load phi-4-mini
+foundry service status
+foundry service ps
+```
+
+Enable the Foundry backend in your shell profile (e.g. `~/.zshrc`):
+
+```bash
+export GIT_AI_COMMIT_PROVIDER=foundry
+export FOUNDRY_MODEL=phi-4-mini
+# Optional — skip auto-discovery:
+# export FOUNDRY_BASE_URL=http://127.0.0.1:61364
+# export FOUNDRY_MODEL_ID=Phi-4-mini-instruct-generic-gpu:5
+```
+
+Keep the Foundry service running with your model loaded while you commit. Reload the model before committing if needed:
+
+```bash
+foundry model load phi-4-mini
+```
+
+On Windows, Foundry Local is available via `winget install Microsoft.FoundryLocal` (see [Microsoft Learn](https://learn.microsoft.com/en-us/azure/foundry-local/reference/reference-cli)).
+
+Requires `curl` and `python3` on `PATH` when using the Foundry backend.
+
 ## Usage
 
 Run from a repository terminal that supports the alias (Git Bash on Windows):
@@ -209,7 +243,7 @@ git ai-commit AB#12345
 2. Your configured editor opens with the proposed message and staged diff
 3. Edit, save, and quit to commit; close without saving to abort
 
-**Excluded from the diff sent to the agent**
+**Excluded from the diff sent to the agent or model**
 
 - `package-lock.json`
 - `yarn.lock`
@@ -219,16 +253,27 @@ git ai-commit AB#12345
 
 Edit `git-ai-commit` locally or fork this repository:
 
-| Variable           | Default      | Purpose                                 |
-| ------------------ | ------------ | --------------------------------------- |
-| `ISSUE_PREFIX`     | `AB#`        | Tracker prefix for `git ai-commit <id>` |
-| `BODY_LINE_LENGTH` | `100`        | Max width for body lines (`fold`)       |
-| `AGENT_PROMPT`     | _(built-in)_ | Instructions passed to the Cursor agent |
+| Variable                 | Default      | Purpose                                          |
+| ------------------------ | ------------ | ------------------------------------------------ |
+| `ISSUE_PREFIX`           | `AB#`        | Tracker prefix for `git ai-commit <id>`          |
+| `BODY_LINE_LENGTH`       | `100`        | Max width for body lines (`fold`)                |
+| `AGENT_PROMPT`           | _(built-in)_ | Instructions passed to the AI backend            |
+| `GIT_AI_COMMIT_PROVIDER` | `cursor`     | `cursor` or `foundry`                            |
+| `FOUNDRY_MODEL`          | `phi-4-mini` | Foundry model alias (when provider is `foundry`) |
+| `FOUNDRY_BASE_URL`       | _(auto)_     | Foundry service base URL (no `/v1` suffix)       |
+| `FOUNDRY_MODEL_ID`       | _(auto)_     | Full Foundry model ID for the REST API           |
+| `FOUNDRY_MAX_TOKENS`     | `2048`       | Max tokens for Foundry chat completion           |
 
-The agent is invoked as:
+**Cursor backend** (default):
 
 ```sh
 cursor agent -p --trust --mode ask --model auto "$prompt"
+```
+
+**Foundry backend** (`GIT_AI_COMMIT_PROVIDER=foundry`):
+
+```sh
+curl -sf "${FOUNDRY_BASE_URL}/v1/chat/completions" ...
 ```
 
 ## Troubleshooting
@@ -243,6 +288,11 @@ cursor agent -p --trust --mode ask --model auto "$prompt"
 | `no staged changes to summarize`           | Stage files with `git add`; lockfiles alone are ignored                                                              |
 | `cursor agent failed`                      | Log in to Cursor CLI; run `cursor agent` manually in the repo                                                        |
 | `empty message from agent`                 | Retry or reduce diff size                                                                                            |
+| `foundry: command not found`               | Install Foundry Local; ensure `foundry` is on `PATH`                                                                 |
+| `foundry service not running`              | Run `foundry model load phi-4-mini`; check `foundry service status`                                                  |
+| `model ... not loaded`                     | Run `foundry model load <alias>`; confirm with `foundry service ps`                                                  |
+| `foundry chat completion failed`           | Confirm model is loaded; try setting `FOUNDRY_BASE_URL` and `FOUNDRY_MODEL_ID` explicitly                            |
+| `python3 required for Foundry backend`     | Install Python 3; required for JSON payload/response handling                                                        |
 | Editor does not open                       | Run `git-ai-commit setup`, or set `core.editor` (e.g. `vim`, `code --wait`, `notepad`)                               |
 | Script errors after clone on Windows       | Run `git config --global core.autocrlf input` in Git Bash, or re-clone with `git clone --config core.autocrlf=input` |
 
@@ -265,13 +315,15 @@ Test-Path "$env:USERPROFILE\.config\git\git-ai-commit\git-ai-commit"
 
 ## Security
 
-- The **full staged diff** is sent to Cursor's agent. Do not stage secrets (`.env`, keys, tokens).
-- `--trust` is used so the agent can run in your repo; use only in repositories you trust.
+- The **full staged diff** is sent to the configured backend. With the default Cursor agent, data goes to Cursor's cloud. With Foundry Local, inference stays on your machine.
+- Do not stage secrets (`.env`, keys, tokens).
+- `--trust` is used for the Cursor backend so the agent can run in your repo; use only in repositories you trust.
 - Always review the generated message in your editor before committing.
 
 ## Quick checklist
 
-- [ ] Cursor CLI installed; `cursor agent` works in your terminal
+- [ ] Cursor CLI installed; `cursor agent` works in your terminal (default backend)
+- [ ] Optional: Foundry Local installed; `foundry model load phi-4-mini`; `GIT_AI_COMMIT_PROVIDER=foundry` set
 - [ ] macOS/Linux: `brew install git-ai-commit` and `git-ai-commit setup`
 - [ ] Windows: repository cloned; `chmod +x` on both scripts; `git-ai-commit setup` run from Git Bash
 - [ ] `ai-commit` alias and `core.editor` in global `.gitconfig`

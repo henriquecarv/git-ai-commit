@@ -57,7 +57,7 @@ capture_staged_diff() {
   fi
 }
 
-# --- Cursor Agent (ask mode, diff in prompt) ---------------------------------
+# --- Commit message generation (Cursor or Foundry Local) -----------------------
 
 show_loading_spinner() {
   agent_pid=$1
@@ -76,7 +76,21 @@ show_loading_spinner() {
   printf '\r\033[K' >&2
 }
 
-generate_commit_message() {
+validate_generated_message() {
+  provider_label=$1
+  agent_status=$2
+
+  if [ "$agent_status" -ne 0 ]; then
+    printf 'git-ai-commit: %s failed\n' "$provider_label" >&2
+    exit "$agent_status"
+  fi
+  if [ -z "$(printf '%s' "$msg" | tr -d '[:space:]')" ]; then
+    printf 'git-ai-commit: empty message from agent\n' >&2
+    exit 1
+  fi
+}
+
+generate_commit_message_cursor() {
   msg_file=$(mktemp) || {
     rm -f "$diff_file"
     printf 'git-ai-commit: mktemp failed\n' >&2
@@ -98,15 +112,154 @@ generate_commit_message() {
 
   msg=$(cat "$msg_file")
   rm -f "$msg_file" "$diff_file"
+  validate_generated_message 'cursor agent' "$agent_status"
+}
 
-  if [ "$agent_status" -ne 0 ]; then
-    printf 'git-ai-commit: cursor agent failed\n' >&2
-    exit "$agent_status"
+foundry_base_url() {
+  if [ -n "${FOUNDRY_BASE_URL:-}" ]; then
+    foundry_base=${FOUNDRY_BASE_URL%/}
+    return 0
   fi
-  if [ -z "$(printf '%s' "$msg" | tr -d '[:space:]')" ]; then
-    printf 'git-ai-commit: empty message from agent\n' >&2
+
+  if ! command -v foundry >/dev/null 2>&1; then
+    printf 'git-ai-commit: foundry: command not found\n' >&2
     exit 1
   fi
+
+  foundry_status=$(foundry service status 2>&1) || {
+    printf 'git-ai-commit: foundry service not running; run: foundry model load %s\n' \
+      "${FOUNDRY_MODEL:-phi-4-mini}" >&2
+    exit 1
+  }
+
+  foundry_base=$(printf '%s\n' "$foundry_status" \
+    | sed -n 's/.*http:\/\/127\.0\.0\.1:\([0-9]*\)\/.*/http:\/\/127.0.0.1:\1/p' \
+    | head -n 1)
+  if [ -z "$foundry_base" ]; then
+    printf 'git-ai-commit: foundry service not running; run: foundry model load %s\n' \
+      "${FOUNDRY_MODEL:-phi-4-mini}" >&2
+    exit 1
+  fi
+}
+
+foundry_model_id() {
+  if [ -n "${FOUNDRY_MODEL_ID:-}" ]; then
+    foundry_model=$FOUNDRY_MODEL_ID
+    return 0
+  fi
+
+  if ! command -v foundry >/dev/null 2>&1; then
+    printf 'git-ai-commit: foundry: command not found\n' >&2
+    exit 1
+  fi
+
+  foundry_alias=${FOUNDRY_MODEL:-phi-4-mini}
+  foundry_ps=$(foundry service ps 2>&1) || {
+    printf 'git-ai-commit: foundry service ps failed; run: foundry service status\n' >&2
+    exit 1
+  }
+
+  foundry_model=$(printf '%s\n' "$foundry_ps" \
+    | awk -v alias="$foundry_alias" '$2 == alias { print $NF; exit }')
+  if [ -z "$foundry_model" ]; then
+    printf 'git-ai-commit: model %s not loaded; run: foundry model load %s\n' \
+      "$foundry_alias" "$foundry_alias" >&2
+    exit 1
+  fi
+}
+
+generate_commit_message_foundry() {
+  msg_file=$(mktemp) || {
+    rm -f "$diff_file"
+    printf 'git-ai-commit: mktemp failed\n' >&2
+    exit 1
+  }
+  payload_file=$(mktemp) || {
+    rm -f "$msg_file" "$diff_file"
+    printf 'git-ai-commit: mktemp failed\n' >&2
+    exit 1
+  }
+  response_file=$(mktemp) || {
+    rm -f "$msg_file" "$payload_file" "$diff_file"
+    printf 'git-ai-commit: mktemp failed\n' >&2
+    exit 1
+  }
+
+  foundry_base_url
+  foundry_model_id
+  FOUNDRY_MAX_TOKENS=${FOUNDRY_MAX_TOKENS:-2048}
+  export AGENT_PROMPT FOUNDRY_MAX_TOKENS
+
+  if ! python3 - "$diff_file" "$foundry_model" "$payload_file" <<'PY'
+import json
+import os
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as diff_file:
+    diff = diff_file.read()
+
+payload = {
+    "model": sys.argv[2],
+    "messages": [
+        {"role": "system", "content": os.environ["AGENT_PROMPT"]},
+        {"role": "user", "content": "Staged diff:\n" + diff},
+    ],
+    "temperature": 0.2,
+    "max_tokens": int(os.environ.get("FOUNDRY_MAX_TOKENS", "2048")),
+}
+
+with open(sys.argv[3], "w", encoding="utf-8") as payload_file:
+    json.dump(payload, payload_file)
+PY
+  then
+    rm -f "$msg_file" "$payload_file" "$response_file" "$diff_file"
+    printf 'git-ai-commit: python3 required for Foundry backend\n' >&2
+    exit 1
+  fi
+
+  (
+    if ! curl -sf "${foundry_base}/v1/chat/completions" \
+      -H "Content-Type: application/json" \
+      -d @"$payload_file" \
+      -o "$response_file"
+    then
+      exit 1
+    fi
+    python3 - "$response_file" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as response_file:
+    data = json.load(response_file)
+
+print(data["choices"][0]["message"]["content"], end="")
+PY
+  ) >"$msg_file" &
+  agent_pid=$!
+
+  show_loading_spinner "$agent_pid"
+  wait "$agent_pid"
+  agent_status=$?
+
+  msg=$(cat "$msg_file")
+  rm -f "$msg_file" "$payload_file" "$response_file" "$diff_file"
+
+  if [ "$agent_status" -ne 0 ]; then
+    printf 'git-ai-commit: foundry chat completion failed\n' >&2
+    exit "$agent_status"
+  fi
+  validate_generated_message 'foundry chat completion' 0
+}
+
+generate_commit_message() {
+  case "${GIT_AI_COMMIT_PROVIDER:-cursor}" in
+    foundry)
+      generate_commit_message_foundry
+      ;;
+    cursor|*)
+      generate_commit_message_cursor
+      ;;
+  esac
 }
 
 # --- Message formatting -------------------------------------------------------
