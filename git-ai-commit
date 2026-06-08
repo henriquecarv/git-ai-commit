@@ -158,11 +158,25 @@ run_commit_flow() {
   run_commit_with_editor
 }
 
+# --- Script location (follow symlinks) ----------------------------------------
+
+script_real_dir() {
+  script=$1
+  while [ -L "$script" ]; do
+    link=$(readlink "$script") || break
+    case $link in
+      /*) script=$link ;;
+      *) script=$(dirname -- "$script")/$link ;;
+    esac
+  done
+  CDPATH= cd -- "$(dirname -- "$script")" && pwd
+}
+
 # --- Main ---------------------------------------------------------------------
 
 case "${1:-}" in
   setup)
-    exec "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/setup"
+    exec "$(script_real_dir "$0")/setup"
     ;;
   -h|--help|help)
     usage
