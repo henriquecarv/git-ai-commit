@@ -22,6 +22,8 @@ fi
 
 current_editor=$(git config --global core.editor 2>/dev/null || true)
 default_editor=${current_editor:-vim}
+current_issue_prefix=$(git config --global ai-commit.issue-prefix 2>/dev/null || true)
+default_issue_prefix=${current_issue_prefix:-}
 
 printf 'Configure Git for git-ai-commit.\n'
 printf 'Examples: vim, nano, code --wait, cursor --wait\n'
@@ -34,10 +36,17 @@ if [ -z "$(printf '%s' "$editor" | tr -d '[:space:]')" ]; then
   exit 1
 fi
 
+printf 'Issue tracker prefix (e.g. AB#, JIRA-, GH-)\n'
+printf 'Issue prefix [%s]: ' "$default_issue_prefix"
+IFS= read -r issue_prefix
+issue_prefix=${issue_prefix:-$default_issue_prefix}
+
 git config --global core.editor "$editor"
+git config --global ai-commit.issue-prefix "$issue_prefix"
 git config --global alias.ai-commit "$alias_value"
 
 printf '\nConfigured:\n'
 printf '  core.editor = %s\n' "$editor"
+printf '  ai-commit.issue-prefix = %s\n' "$issue_prefix"
 printf '  alias.ai-commit = %s\n' "$alias_value"
 printf '\nUse: git ai-commit\n'

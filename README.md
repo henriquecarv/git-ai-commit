@@ -50,9 +50,10 @@ brew install git-ai-commit
 git-ai-commit setup
 ```
 
-**`git-ai-commit setup`** interactively asks for your default Git editor and configures `~/.gitconfig`:
+**`git-ai-commit setup`** interactively asks for your default Git editor and issue tracker prefix, and configures `~/.gitconfig`:
 
 - `core.editor` — e.g. `vim`, `nano`, `code --wait`, `cursor --wait`
+- `ai-commit.issue-prefix` — e.g. `AB#`, `JIRA-`, `GH-` (optional; leave blank for none)
 - `alias.ai-commit` — `!git-ai-commit`
 
 After setup, use `git ai-commit` in any repository.
@@ -63,7 +64,7 @@ After setup, use `git ai-commit` in any repository.
 brew upgrade git-ai-commit
 ```
 
-Re-run `git-ai-commit setup` only if you want to change your editor or refresh the alias.
+Re-run `git-ai-commit setup` only if you want to change your editor, issue prefix, or refresh the alias.
 
 See [TAP.md](TAP.md) for local tap development and maintainer release notes.
 
@@ -134,7 +135,7 @@ Or invoke the setup script directly:
 ~/.config/git/git-ai-commit/setup
 ```
 
-This interactively sets `core.editor` and `alias.ai-commit` in `~/.gitconfig`. The alias uses the full path to `git-ai-commit` when it is not on `PATH`.
+This interactively sets `core.editor`, `ai-commit.issue-prefix`, and `alias.ai-commit` in `~/.gitconfig`. The alias uses the full path to `git-ai-commit` when it is not on `PATH`.
 
 After setup, use `git ai-commit` in any repository.
 
@@ -147,6 +148,9 @@ Edit `~/.gitconfig` (or `%USERPROFILE%\.gitconfig` on Windows) and add:
 ```ini
 [core]
     editor = vim
+
+[ai-commit]
+    issue-prefix = AB#
 
 [alias]
     ai-commit = "!$HOME/.config/git/git-ai-commit/git-ai-commit"
@@ -219,9 +223,9 @@ git ai-commit AB#12345
 
 Edit `git-ai-commit` locally or fork this repository:
 
-| Variable           | Default      | Purpose                                 |
+| Setting / variable | Default      | Purpose                                 |
 | ------------------ | ------------ | --------------------------------------- |
-| `ISSUE_PREFIX`     | `AB#`        | Tracker prefix for `git ai-commit <id>` |
+| `ai-commit.issue-prefix` (git config) | _(empty)_ | Tracker prefix for `git ai-commit <id>`; set via `git-ai-commit setup` |
 | `BODY_LINE_LENGTH` | `100`        | Max width for body lines (`fold`)       |
 | `AGENT_PROMPT`     | _(built-in)_ | Instructions passed to the Cursor agent |
 
@@ -251,6 +255,7 @@ cursor agent -p --trust --mode ask --model auto "$prompt"
 ```bash
 git config --global alias.ai-commit
 git config --global core.editor
+git config --global ai-commit.issue-prefix
 which git-ai-commit sh cursor
 git-ai-commit --help
 ```
@@ -260,6 +265,7 @@ git-ai-commit --help
 ```powershell
 git config --global alias.ai-commit
 git config --global core.editor
+git config --global ai-commit.issue-prefix
 Test-Path "$env:USERPROFILE\.config\git\git-ai-commit\git-ai-commit"
 ```
 
@@ -274,7 +280,7 @@ Test-Path "$env:USERPROFILE\.config\git\git-ai-commit\git-ai-commit"
 - [ ] Cursor CLI installed; `cursor agent` works in your terminal
 - [ ] macOS/Linux: `brew install git-ai-commit` and `git-ai-commit setup`
 - [ ] Windows: repository cloned; `chmod +x` on both scripts; `git-ai-commit setup` run from Git Bash
-- [ ] `ai-commit` alias and `core.editor` in global `.gitconfig`
+- [ ] `ai-commit` alias, `core.editor`, and `ai-commit.issue-prefix` in global `.gitconfig`
 - [ ] Test: stage a small change → `git ai-commit`
 
 ## Files

@@ -11,6 +11,7 @@ git-ai-commit setup
 ## What `git-ai-commit setup` does
 
 - Sets `core.editor` in `~/.gitconfig` (interactive prompt)
+- Sets `ai-commit.issue-prefix` (interactive prompt; optional)
 - Sets `alias.ai-commit = !git-ai-commit`
 
 After setup, use `git ai-commit` in any repository.
@@ -21,7 +22,7 @@ After setup, use `git ai-commit` in any repository.
 brew upgrade git-ai-commit
 ```
 
-Re-run `git-ai-commit setup` only if you want to change your editor or refresh the alias.
+Re-run `git-ai-commit setup` only if you want to change your editor, issue prefix, or refresh the alias.
 
 ## Local tap (development)
 
