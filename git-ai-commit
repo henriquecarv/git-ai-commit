@@ -2,7 +2,7 @@
 
 set -u
 
-DEFAULT_ISSUE_PREFIX=""
+DEFAULT_ISSUE_PREFIX="AB#"
 BODY_LINE_LENGTH=100
 AGENT_PROMPT="Write a Conventional Commits message for this diff. Output only the message, with this structure:
 
@@ -57,7 +57,7 @@ capture_staged_diff() {
   fi
 }
 
-# --- Cursor Agent (ask mode, diff in prompt) ---------------------------------
+# --- Ollama phi4-mini agent (ask mode, diff in prompt) ---------------------------------
 
 show_loading_spinner() {
   agent_pid=$1
@@ -88,7 +88,7 @@ generate_commit_message() {
       "$AGENT_PROMPT" \
       'Staged diff:' \
       "$(cat "$diff_file")")
-    cursor agent -p --trust --mode ask --model auto "$prompt" >"$msg_file"
+    ollama agent -p --trust --mode ask --model phi4-mini "$prompt" >"$msg_file"
   ) &
   agent_pid=$!
 
@@ -100,11 +100,11 @@ generate_commit_message() {
   rm -f "$msg_file" "$diff_file"
 
   if [ "$agent_status" -ne 0 ]; then
-    printf 'git-ai-commit: cursor agent failed\n' >&2
+    printf 'git-ai-commit: ollama agent failed\n' >&2
     exit "$agent_status"
   fi
   if [ -z "$(printf '%s' "$msg" | tr -d '[:space:]')" ]; then
-    printf 'git-ai-commit: empty message from agent\n' >&2
+    printf 'git-ai-commit: empty message from ollama agent\n' >&2
     exit 1
   fi
 }

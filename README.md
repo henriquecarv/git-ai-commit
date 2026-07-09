@@ -1,6 +1,6 @@
 # Git AI Commit
 
-Generate a **Conventional Commits** message from your staged diff using the [Cursor](https://cursor.com) Agent, then open your Git editor for review before committing.
+Generate a **Conventional Commits** message from your staged diff using local [Ollama](https://ollama.com) with `phi4-mini`, then open your Git editor for review before committing.
 
 Works on **macOS**, **Linux**, and **Windows** (via [Git for Windows](https://git-scm.com/download/win) Bash, MSYS2, or WSL).
 
@@ -28,14 +28,26 @@ Works on **macOS**, **Linux**, and **Windows** (via [Git for Windows](https://gi
 | ------------------ | ---------------------------------------------------------------- |
 | **Git** 2.x+       | Alias support required                                           |
 | **POSIX shell**    | Provided by macOS/Linux natively; on Windows use Git Bash or WSL |
-| **Cursor CLI**     | `cursor` on `PATH`; `cursor agent` must work (logged in)         |
+| **Ollama** 0.5.13+ | `ollama` on `PATH`; `ollama agent` must work                     |
+| **phi4-mini**      | Pulled locally in Ollama (`setup` can do this interactively)     |
 | **Staged changes** | Run `git add` before `git ai-commit`                             |
 
 Verify the CLI (same on all platforms):
 
 ```bash
-cursor --version
-cursor agent --help
+ollama --version
+ollama list
+ollama agent --help
+```
+
+Install Ollama:
+
+```bash
+# macOS / Linux
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Then pull the model (setup can do this interactively)
+ollama pull phi4-mini
 ```
 
 ## Installation
@@ -50,7 +62,9 @@ brew install git-ai-commit
 git-ai-commit setup
 ```
 
-**`git-ai-commit setup`** interactively asks for your default Git editor and issue tracker prefix, and configures `~/.gitconfig`:
+Ollama must be installed separately. `git-ai-commit setup` verifies that `ollama` is on `PATH`, checks for `phi4-mini`, and offers to run `ollama pull phi4-mini` before configuring Git.
+
+**`git-ai-commit setup`** interactively configures `~/.gitconfig`:
 
 - `core.editor` — e.g. `vim`, `nano`, `code --wait`, `cursor --wait`
 - `ai-commit.issue-prefix` — e.g. `AB#`, `JIRA-`, `GH-` (optional; leave blank for none)
@@ -64,7 +78,7 @@ After setup, use `git ai-commit` in any repository.
 brew upgrade git-ai-commit
 ```
 
-Re-run `git-ai-commit setup` only if you want to change your editor, issue prefix, or refresh the alias.
+Re-run `git-ai-commit setup` if you want to change your editor, issue prefix, refresh the alias, or re-check Ollama/model availability.
 
 See [TAP.md](TAP.md) for local tap development and maintainer release notes.
 
@@ -136,6 +150,7 @@ Or invoke the setup script directly:
 ```
 
 This interactively sets `core.editor`, `ai-commit.issue-prefix`, and `alias.ai-commit` in `~/.gitconfig`. The alias uses the full path to `git-ai-commit` when it is not on `PATH`.
+Before the Git prompts, setup verifies that `ollama` is installed, checks for `phi4-mini`, and offers to pull it if needed.
 
 After setup, use `git ai-commit` in any repository.
 
@@ -178,7 +193,7 @@ cd ~/.config/git/git-ai-commit && git pull
 - Run `git ai-commit` from **Git Bash** or WSL, not plain `cmd.exe` / PowerShell.
 - `$HOME` inside Git Bash is your Windows user profile (same as `%USERPROFILE%`).
 - **WSL**: treat as Linux — use Homebrew inside WSL, or follow the manual steps above under the WSL home directory.
-- Install the **Cursor CLI** in the same environment where you run Git.
+- Install **Ollama** in the same environment where you run Git.
 
 ---
 
@@ -227,12 +242,12 @@ Edit `git-ai-commit` locally or fork this repository:
 | ------------------ | ------------ | --------------------------------------- |
 | `ai-commit.issue-prefix` (git config) | _(empty)_ | Tracker prefix for `git ai-commit <id>`; set via `git-ai-commit setup` |
 | `BODY_LINE_LENGTH` | `100`        | Max width for body lines (`fold`)       |
-| `AGENT_PROMPT`     | _(built-in)_ | Instructions passed to the Cursor agent |
+| `AGENT_PROMPT`     | _(built-in)_ | Instructions passed to the Ollama agent |
 
 The agent is invoked as:
 
 ```sh
-cursor agent -p --trust --mode ask --model auto "$prompt"
+ollama agent -p --trust --mode ask --model phi4-mini "$prompt"
 ```
 
 ## Troubleshooting
@@ -243,10 +258,11 @@ cursor agent -p --trust --mode ask --model auto "$prompt"
 | `git-ai-commit: command not found`         | Run `brew install git-ai-commit`, or confirm Homebrew `bin` is on `PATH`                                             |
 | `Permission denied` (macOS/Linux/Git Bash) | `chmod +x` on `git-ai-commit` and `setup`                                                                            |
 | `sh: ...: not found` (Windows)             | Use **Git Bash** or WSL; avoid `cmd.exe` / PowerShell for `git ai-commit`                                            |
-| `cursor: command not found`                | Install Cursor CLI; restart terminal; ensure `cursor` is on `PATH` in the same shell you use for Git                 |
+| `ollama: command not found`                | Install Ollama; restart terminal; ensure `ollama` is on `PATH` in the same shell you use for Git                     |
 | `no staged changes to summarize`           | Stage files with `git add`; lockfiles alone are ignored                                                              |
-| `cursor agent failed`                      | Log in to Cursor CLI; run `cursor agent` manually in the repo                                                        |
-| `empty message from agent`                 | Retry or reduce diff size                                                                                            |
+| `ollama agent failed`                      | Run `ollama agent --help`; confirm Ollama is healthy and retry in the repo                                           |
+| `empty message from ollama agent`          | Retry, reduce diff size, or test `ollama agent` manually                                                             |
+| `Model phi4-mini is not available locally` | Run `ollama pull phi4-mini`, or rerun `git-ai-commit setup` and accept the pull prompt                               |
 | Editor does not open                       | Run `git-ai-commit setup`, or set `core.editor` (e.g. `vim`, `code --wait`, `notepad`)                               |
 | Script errors after clone on Windows       | Run `git config --global core.autocrlf input` in Git Bash, or re-clone with `git clone --config core.autocrlf=input` |
 
@@ -256,7 +272,7 @@ cursor agent -p --trust --mode ask --model auto "$prompt"
 git config --global alias.ai-commit
 git config --global core.editor
 git config --global ai-commit.issue-prefix
-which git-ai-commit sh cursor
+which git-ai-commit sh ollama
 git-ai-commit --help
 ```
 
@@ -271,13 +287,14 @@ Test-Path "$env:USERPROFILE\.config\git\git-ai-commit\git-ai-commit"
 
 ## Security
 
-- The **full staged diff** is sent to Cursor's agent. Do not stage secrets (`.env`, keys, tokens).
+- The **full staged diff** is sent to your local Ollama agent. Do not stage secrets (`.env`, keys, tokens).
 - `--trust` is used so the agent can run in your repo; use only in repositories you trust.
 - Always review the generated message in your editor before committing.
 
 ## Quick checklist
 
-- [ ] Cursor CLI installed; `cursor agent` works in your terminal
+- [ ] Ollama installed; `ollama agent` works in your terminal
+- [ ] `phi4-mini` pulled locally, or `git-ai-commit setup` confirmed it
 - [ ] macOS/Linux: `brew install git-ai-commit` and `git-ai-commit setup`
 - [ ] Windows: repository cloned; `chmod +x` on both scripts; `git-ai-commit setup` run from Git Bash
 - [ ] `ai-commit` alias, `core.editor`, and `ai-commit.issue-prefix` in global `.gitconfig`

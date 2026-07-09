@@ -8,8 +8,15 @@ brew install git-ai-commit
 git-ai-commit setup
 ```
 
+Prerequisites:
+
+- Ollama 0.5.13+ with `phi4-mini` available locally (`setup` can pull it)
+- Git 2.x+
+
 ## What `git-ai-commit setup` does
 
+- Verifies `ollama` is on `PATH` (install from `https://ollama.com/download` if missing)
+- Ensures `phi4-mini` is available locally; offers `ollama pull phi4-mini` if not
 - Sets `core.editor` in `~/.gitconfig` (interactive prompt)
 - Sets `ai-commit.issue-prefix` (interactive prompt; optional)
 - Sets `alias.ai-commit = !git-ai-commit`
@@ -22,7 +29,7 @@ After setup, use `git ai-commit` in any repository.
 brew upgrade git-ai-commit
 ```
 
-Re-run `git-ai-commit setup` only if you want to change your editor, issue prefix, or refresh the alias.
+Re-run `git-ai-commit setup` if you want to change your editor, issue prefix, refresh the alias, or re-check Ollama/model availability.
 
 ## Local tap (development)
 

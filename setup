@@ -2,9 +2,46 @@
 
 set -u
 
+OLLAMA_MODEL=phi4-mini
+
 if ! command -v git >/dev/null 2>&1; then
   printf 'setup: git not found on PATH\n' >&2
   exit 1
+fi
+
+if ! command -v ollama >/dev/null 2>&1; then
+  printf 'setup: ollama not found on PATH\n' >&2
+  printf 'Install Ollama from https://ollama.com/download and rerun setup.\n' >&2
+  exit 1
+fi
+
+ollama_models=$(ollama list 2>/dev/null || true)
+
+if ! printf '%s\n' "$ollama_models" | grep -Eq "^${OLLAMA_MODEL}([[:space:]]|:)" \
+  && ! printf '%s\n' "$ollama_models" | grep -Eq "[[:space:]]${OLLAMA_MODEL}([[:space:]]|:)"; then
+  printf 'Model %s is not available locally.\n' "$OLLAMA_MODEL"
+  printf 'Pull %s now? [Y/n]: ' "$OLLAMA_MODEL"
+  IFS= read -r pull_model
+  pull_model=${pull_model:-Y}
+
+  case $pull_model in
+    [Yy]|[Yy][Ee][Ss])
+      if ! ollama pull "$OLLAMA_MODEL"; then
+        printf 'setup: failed to pull %s\n' "$OLLAMA_MODEL" >&2
+        printf 'Run `ollama pull %s` and rerun setup.\n' "$OLLAMA_MODEL" >&2
+        exit 1
+      fi
+      ;;
+    [Nn]|[Nn][Oo])
+      printf 'setup: %s is required\n' "$OLLAMA_MODEL" >&2
+      printf 'Run `ollama pull %s` and rerun setup.\n' "$OLLAMA_MODEL" >&2
+      exit 1
+      ;;
+    *)
+      printf 'setup: please answer y or n\n' >&2
+      exit 1
+      ;;
+  esac
 fi
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -46,6 +83,7 @@ git config --global ai-commit.issue-prefix "$issue_prefix"
 git config --global alias.ai-commit "$alias_value"
 
 printf '\nConfigured:\n'
+printf '  ollama model = %s\n' "$OLLAMA_MODEL"
 printf '  core.editor = %s\n' "$editor"
 printf '  ai-commit.issue-prefix = %s\n' "$issue_prefix"
 printf '  alias.ai-commit = %s\n' "$alias_value"
