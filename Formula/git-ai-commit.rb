@@ -4,7 +4,7 @@ class GitAiCommit < Formula
   desc "Generate Conventional Commit messages via Ollama (phi4-mini)"
   homepage "https://github.com/henriquecarv/git-ai-commit"
   url "https://github.com/henriquecarv/git-ai-commit.git", branch: "main"
-  version "2.0.0"
+  version "2.1.0"
   license "MIT"
 
   depends_on "git"

@@ -4,11 +4,26 @@ set -u
 
 DEFAULT_ISSUE_PREFIX="AB#"
 BODY_LINE_LENGTH=100
-AGENT_PROMPT="Write a Conventional Commits message for this diff. Output only the message, with this structure:
+OLLAMA_MODEL=phi4-mini
+AGENT_PROMPT="Write one high-quality Conventional Commits message for this staged diff.
+Output only the commit message.
 
-1. Subject (first line): <type>[optional scope]: <imperative summary>. Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore. No period at end; keep it strictly under 72 characters(including the issue prefix if present).
-2. Blank line, then body: one or more paragraphs separated by blank lines. Explain what changed and why—not a file list. Wrap so no line exceeds $BODY_LINE_LENGTH characters.
-3. Blank line, then footers (if applicable): one key-value pair per line (e.g. Refs: #123, Co-authored-by:, Breaking-Change:). Omit footers you cannot infer from the diff; do not invent reviewers or issue numbers.
+Required shape:
+1. Subject line: <type>[optional scope]: <imperative summary>.
+   - Allowed types: feat, fix, docs, style, refactor, perf, test, build, ci, chore.
+   - No period at the end.
+   - Keep it strictly under 72 characters, including any issue prefix.
+2. Blank line.
+3. Body: write one or more explanatory paragraphs for any non-trivial diff.
+   - Explain what changed, why it changed, and the practical impact.
+   - Summarize behavior and intent, not a file-by-file list.
+   - Do not use bullets, markdown fences, headings, analysis preambles, or labels.
+   - Wrap so no line exceeds $BODY_LINE_LENGTH characters.
+4. Optional footers after a blank line, only when explicitly supported by the diff or direct user input.
+   - Never invent issue references, people, email addresses, reviewers, co-authors, or metadata.
+   - Co-authored-by: is allowed only when the exact value is present in the diff.
+   - Refs: is allowed only when the exact reference is present in the diff or was provided directly by the user.
+   - BREAKING CHANGE: is allowed only when the diff clearly shows a breaking change.
 
 Example shape:
 fix: prevent racing of requests
@@ -16,8 +31,6 @@ fix: prevent racing of requests
 Introduce a request id and dismiss stale responses.
 
 Remove obsolete timeouts that mitigated the race.
-
-Refs: #123
 
 Output only the commit message."
 
@@ -57,7 +70,19 @@ capture_staged_diff() {
   fi
 }
 
-# --- Ollama phi4-mini agent (ask mode, diff in prompt) ---------------------------------
+# --- Ollama phi4-mini run (diff in prompt) -----------------------------------
+
+ollama_run_supports_nowordwrap() {
+  ollama run --help 2>/dev/null | grep -q -- '--nowordwrap'
+}
+
+run_ollama_prompt() {
+  if ollama_run_supports_nowordwrap; then
+    printf '%s\n' "$1" | ollama run --nowordwrap "$OLLAMA_MODEL"
+  else
+    printf '%s\n' "$1" | ollama run "$OLLAMA_MODEL"
+  fi
+}
 
 show_loading_spinner() {
   agent_pid=$1
@@ -88,7 +113,7 @@ generate_commit_message() {
       "$AGENT_PROMPT" \
       'Staged diff:' \
       "$(cat "$diff_file")")
-    ollama agent -p --trust --mode ask --model phi4-mini "$prompt" >"$msg_file"
+    run_ollama_prompt "$prompt" >"$msg_file"
   ) &
   agent_pid=$!
 
@@ -97,14 +122,14 @@ generate_commit_message() {
   agent_status=$?
 
   msg=$(cat "$msg_file")
-  rm -f "$msg_file" "$diff_file"
+  rm -f "$msg_file"
 
   if [ "$agent_status" -ne 0 ]; then
-    printf 'git-ai-commit: ollama agent failed\n' >&2
+    printf 'git-ai-commit: ollama run failed\n' >&2
     exit "$agent_status"
   fi
   if [ -z "$(printf '%s' "$msg" | tr -d '[:space:]')" ]; then
-    printf 'git-ai-commit: empty message from ollama agent\n' >&2
+    printf 'git-ai-commit: empty message from ollama run\n' >&2
     exit 1
   fi
 }
@@ -114,6 +139,185 @@ generate_commit_message() {
 split_title_and_body() {
   title=$(printf '%s\n' "$msg" | head -n 1)
   body=$(printf '%s\n' "$msg" | tail -n +2)
+}
+
+build_explicit_issue_ref() {
+  explicit_issue_ref=
+  if [ -z "$issue_id" ]; then
+    return 0
+  fi
+  load_issue_prefix
+  case $issue_id in
+    $ISSUE_PREFIX*) explicit_issue_ref=$issue_id ;;
+    *) explicit_issue_ref="$ISSUE_PREFIX$issue_id" ;;
+  esac
+}
+
+footer_key() {
+  case $1 in
+    "BREAKING CHANGE:"*)
+      printf 'BREAKING CHANGE\n'
+      ;;
+    *)
+      printf '%s\n' "$1" | sed -n 's/^\([A-Za-z-][A-Za-z-]*\):.*/\1/p'
+      ;;
+  esac
+}
+
+footer_value() {
+  case $1 in
+    "BREAKING CHANGE:"*)
+      printf '%s\n' "$1" | sed -n 's/^BREAKING CHANGE:[[:space:]]*//p'
+      ;;
+    *)
+      printf '%s\n' "$1" | sed -n 's/^[A-Za-z-][A-Za-z-]*:[[:space:]]*//p'
+      ;;
+  esac
+}
+
+diff_contains_exact_line() {
+  line=$1
+  if [ -z "$line" ]; then
+    return 1
+  fi
+  grep -Fqx "$line" "$diff_file" || grep -Fqx "+$line" "$diff_file"
+}
+
+diff_contains_token() {
+  token=$1
+  if [ -z "$token" ]; then
+    return 1
+  fi
+  grep -Fq "$token" "$diff_file"
+}
+
+diff_indicates_breaking_change() {
+  grep -Eiq 'BREAKING[ -]CHANGE|breaking change' "$diff_file"
+}
+
+footer_is_allowed() {
+  line=$1
+  key=$(footer_key "$line")
+  value=$(footer_value "$line")
+
+  case $key in
+    Co-authored-by)
+      diff_contains_exact_line "$line"
+      ;;
+    Refs)
+      [ -n "$explicit_issue_ref" ] && [ "$value" = "$explicit_issue_ref" ] && return 0
+      diff_contains_token "$value"
+      ;;
+    BREAKING-CHANGE|BREAKING\ CHANGE)
+      diff_indicates_breaking_change
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+normalize_footer_block() {
+  tmp_body_input=$(mktemp) || {
+    printf 'git-ai-commit: mktemp failed\n' >&2
+    exit 1
+  }
+  tmp_body_output=$(mktemp) || {
+    rm -f "$tmp_body_input"
+    printf 'git-ai-commit: mktemp failed\n' >&2
+    exit 1
+  }
+
+  printf '%s\n' "$body" >"$tmp_body_input"
+
+  footer_block=$(
+    awk '
+      function supported_footer(line) {
+        return line ~ /^(Refs|Co-authored-by|BREAKING-CHANGE):[[:space:]].+/ ||
+          line ~ /^BREAKING CHANGE:[[:space:]].+/
+      }
+
+      { lines[NR] = $0 }
+      END {
+        end = NR
+        while (end > 0 && lines[end] ~ /^[[:space:]]*$/) end--
+        start = end
+        footer_count = 0
+        all_supported = 1
+
+        while (start > 0 && lines[start] ~ /^([A-Za-z-][A-Za-z-]*|BREAKING CHANGE):[[:space:]].+/) {
+          footer_count++
+          if (!supported_footer(lines[start])) {
+            all_supported = 0
+          }
+          start--
+        }
+
+        if (footer_count > 0 && all_supported && start > 0 && lines[start] ~ /^[[:space:]]*$/) {
+          for (i = start + 1; i <= end; i++) print lines[i]
+        }
+      }
+    ' "$tmp_body_input"
+  )
+
+  if [ -z "$(printf '%s' "$footer_block" | tr -d '[:space:]')" ]; then
+    rm -f "$tmp_body_input" "$tmp_body_output"
+    return 0
+  fi
+
+  awk '
+    function supported_footer(line) {
+      return line ~ /^(Refs|Co-authored-by|BREAKING-CHANGE):[[:space:]].+/ ||
+        line ~ /^BREAKING CHANGE:[[:space:]].+/
+    }
+
+    { lines[NR] = $0 }
+    END {
+      end = NR
+      while (end > 0 && lines[end] ~ /^[[:space:]]*$/) end--
+      start = end
+      footer_count = 0
+      all_supported = 1
+
+      while (start > 0 && lines[start] ~ /^([A-Za-z-][A-Za-z-]*|BREAKING CHANGE):[[:space:]].+/) {
+        footer_count++
+        if (!supported_footer(lines[start])) {
+          all_supported = 0
+        }
+        start--
+      }
+
+      if (footer_count > 0 && all_supported && start > 0 && lines[start] ~ /^[[:space:]]*$/) {
+        body_end = start - 1
+      } else {
+        body_end = NR
+      }
+
+      while (body_end > 0 && lines[body_end] ~ /^[[:space:]]*$/) body_end--
+      for (i = 1; i <= body_end; i++) print lines[i]
+    }
+  ' "$tmp_body_input" >"$tmp_body_output"
+
+  body=$(cat "$tmp_body_output")
+  filtered_footers=
+
+  printf '%s\n' "$footer_block" | while IFS= read -r footer_line || [ -n "$footer_line" ]; do
+    [ -z "$(printf '%s' "$footer_line" | tr -d '[:space:]')" ] && continue
+    if footer_is_allowed "$footer_line"; then
+      printf '%s\n' "$footer_line"
+    fi
+  done >"$tmp_body_input"
+
+  filtered_footers=$(cat "$tmp_body_input")
+  rm -f "$tmp_body_input" "$tmp_body_output"
+
+  if [ -n "$(printf '%s' "$filtered_footers" | tr -d '[:space:]')" ]; then
+    if [ -n "$(printf '%s' "$body" | tr -d '[:space:]')" ]; then
+      body=$(printf '%s\n\n%s\n' "$body" "$filtered_footers")
+    else
+      body=$filtered_footers
+    fi
+  fi
 }
 
 wrap_body_to_100_cols() {
@@ -159,9 +363,14 @@ run_commit_flow() {
   capture_staged_diff
   generate_commit_message
   split_title_and_body
+  build_explicit_issue_ref
+  normalize_footer_block
   wrap_body_to_100_cols
   append_issue_to_title
   run_commit_with_editor
+  commit_status=$?
+  rm -f "$diff_file"
+  return "$commit_status"
 }
 
 # --- Script location (follow symlinks) ----------------------------------------

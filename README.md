@@ -28,7 +28,7 @@ Works on **macOS**, **Linux**, and **Windows** (via [Git for Windows](https://gi
 | ------------------ | ---------------------------------------------------------------- |
 | **Git** 2.x+       | Alias support required                                           |
 | **POSIX shell**    | Provided by macOS/Linux natively; on Windows use Git Bash or WSL |
-| **Ollama** 0.5.13+ | `ollama` on `PATH`; `ollama agent` must work                     |
+| **Ollama** 0.5.13+ | `ollama` on `PATH`; `ollama run` must work                       |
 | **phi4-mini**      | Pulled locally in Ollama (`setup` can do this interactively)     |
 | **Staged changes** | Run `git add` before `git ai-commit`                             |
 
@@ -37,7 +37,7 @@ Verify the CLI (same on all platforms):
 ```bash
 ollama --version
 ollama list
-ollama agent --help
+ollama run --help
 ```
 
 Install Ollama:
@@ -224,11 +224,11 @@ git ai-commit AB#12345
 
 **Workflow**
 
-1. `git ai-commit` runs the agent (spinner on stderr: `Loading commit message...`)
+1. `git ai-commit` runs `ollama` (spinner on stderr: `Loading commit message...`)
 2. Your configured editor opens with the proposed message and staged diff
 3. Edit, save, and quit to commit; close without saving to abort
 
-**Excluded from the diff sent to the agent**
+**Excluded from the diff sent to `ollama run`**
 
 - `package-lock.json`
 - `yarn.lock`
@@ -242,13 +242,24 @@ Edit `git-ai-commit` locally or fork this repository:
 | ------------------ | ------------ | --------------------------------------- |
 | `ai-commit.issue-prefix` (git config) | _(empty)_ | Tracker prefix for `git ai-commit <id>`; set via `git-ai-commit setup` |
 | `BODY_LINE_LENGTH` | `100`        | Max width for body lines (`fold`)       |
-| `AGENT_PROMPT`     | _(built-in)_ | Instructions passed to the Ollama agent |
+| `AGENT_PROMPT`     | _(built-in)_ | Instructions passed to `ollama run` |
 
-The agent is invoked as:
+The model is invoked with the full prompt on stdin. When supported by the installed Ollama CLI,
+`--nowordwrap` is used so the script can handle wrapping itself:
 
 ```sh
-ollama agent -p --trust --mode ask --model phi4-mini "$prompt"
+printf '%s\n' "$prompt" | ollama run --nowordwrap phi4-mini
 ```
+
+`phi4-mini` remains the default because it is small and practical for local use. Larger local models may
+produce richer commit bodies for complex diffs, but this release does not change the default model.
+
+Generated footer lines are filtered before the editor opens:
+
+- `Co-authored-by:` survives only when the exact line already exists in the staged diff
+- `Refs:` survives only when it matches the explicit `git ai-commit <issue-id>` input or an exact reference token already present in the staged diff
+- `BREAKING CHANGE:` and `BREAKING-CHANGE:` survive only when the staged diff explicitly indicates a breaking change
+- Unknown or invented footer keys are removed
 
 ## Troubleshooting
 
@@ -260,8 +271,8 @@ ollama agent -p --trust --mode ask --model phi4-mini "$prompt"
 | `sh: ...: not found` (Windows)             | Use **Git Bash** or WSL; avoid `cmd.exe` / PowerShell for `git ai-commit`                                            |
 | `ollama: command not found`                | Install Ollama; restart terminal; ensure `ollama` is on `PATH` in the same shell you use for Git                     |
 | `no staged changes to summarize`           | Stage files with `git add`; lockfiles alone are ignored                                                              |
-| `ollama agent failed`                      | Run `ollama agent --help`; confirm Ollama is healthy and retry in the repo                                           |
-| `empty message from ollama agent`          | Retry, reduce diff size, or test `ollama agent` manually                                                             |
+| `ollama run failed`                        | Run `ollama run --help`; confirm Ollama is healthy and retry in the repo                                             |
+| `empty message from ollama run`            | Retry, reduce diff size, or test `ollama run phi4-mini "test"` manually                                              |
 | `Model phi4-mini is not available locally` | Run `ollama pull phi4-mini`, or rerun `git-ai-commit setup` and accept the pull prompt                               |
 | Editor does not open                       | Run `git-ai-commit setup`, or set `core.editor` (e.g. `vim`, `code --wait`, `notepad`)                               |
 | Script errors after clone on Windows       | Run `git config --global core.autocrlf input` in Git Bash, or re-clone with `git clone --config core.autocrlf=input` |
@@ -287,13 +298,12 @@ Test-Path "$env:USERPROFILE\.config\git\git-ai-commit\git-ai-commit"
 
 ## Security
 
-- The **full staged diff** is sent to your local Ollama agent. Do not stage secrets (`.env`, keys, tokens).
-- `--trust` is used so the agent can run in your repo; use only in repositories you trust.
+- The **full staged diff** is sent to your local Ollama model via `ollama run`. Do not stage secrets (`.env`, keys, tokens).
 - Always review the generated message in your editor before committing.
 
 ## Quick checklist
 
-- [ ] Ollama installed; `ollama agent` works in your terminal
+- [ ] Ollama installed; `ollama run phi4-mini "test"` works in your terminal
 - [ ] `phi4-mini` pulled locally, or `git-ai-commit setup` confirmed it
 - [ ] macOS/Linux: `brew install git-ai-commit` and `git-ai-commit setup`
 - [ ] Windows: repository cloned; `chmod +x` on both scripts; `git-ai-commit setup` run from Git Bash
