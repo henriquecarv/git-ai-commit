@@ -10,13 +10,13 @@ git-ai-commit setup
 
 Prerequisites:
 
-- Ollama 0.5.13+ with `phi4-mini` available locally (`setup` can pull it)
+- Ollama 0.5.13+ with `phi4` available locally (`setup` can pull it)
 - Git 2.x+
 
 ## What `git-ai-commit setup` does
 
 - Verifies `ollama` is on `PATH` (install from `https://ollama.com/download` if missing)
-- Ensures `phi4-mini` is available locally; offers `ollama pull phi4-mini` if not
+- Ensures `phi4` is available locally; offers `ollama pull phi4` if not
 - Sets `core.editor` in `~/.gitconfig` (interactive prompt)
 - Sets `ai-commit.issue-prefix` (interactive prompt; optional)
 - Sets `alias.ai-commit = !git-ai-commit`

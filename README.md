@@ -1,6 +1,6 @@
 # Git AI Commit
 
-Generate a **Conventional Commits** message from your staged diff using local [Ollama](https://ollama.com) with `phi4-mini`, then open your Git editor for review before committing.
+Generate a **Conventional Commits** message from your staged diff using local [Ollama](https://ollama.com) with `phi4`, then open your Git editor for review before committing.
 
 Works on **macOS**, **Linux**, and **Windows** (via [Git for Windows](https://git-scm.com/download/win) Bash, MSYS2, or WSL).
 
@@ -29,7 +29,7 @@ Works on **macOS**, **Linux**, and **Windows** (via [Git for Windows](https://gi
 | **Git** 2.x+       | Alias support required                                           |
 | **POSIX shell**    | Provided by macOS/Linux natively; on Windows use Git Bash or WSL |
 | **Ollama** 0.5.13+ | `ollama` on `PATH`; `ollama run` must work                       |
-| **phi4-mini**      | Pulled locally in Ollama (`setup` can do this interactively)     |
+| **phi4**           | Pulled locally in Ollama (`setup` can do this interactively)     |
 | **Staged changes** | Run `git add` before `git ai-commit`                             |
 
 Verify the CLI (same on all platforms):
@@ -47,7 +47,7 @@ Install Ollama:
 curl -fsSL https://ollama.com/install.sh | sh
 
 # Then pull the model (setup can do this interactively)
-ollama pull phi4-mini
+ollama pull phi4
 ```
 
 ## Installation
@@ -62,7 +62,7 @@ brew install git-ai-commit
 git-ai-commit setup
 ```
 
-Ollama must be installed separately. `git-ai-commit setup` verifies that `ollama` is on `PATH`, checks for `phi4-mini`, and offers to run `ollama pull phi4-mini` before configuring Git.
+Ollama must be installed separately. `git-ai-commit setup` verifies that `ollama` is on `PATH`, checks for `phi4`, and offers to run `ollama pull phi4` before configuring Git.
 
 **`git-ai-commit setup`** interactively configures `~/.gitconfig`:
 
@@ -150,7 +150,7 @@ Or invoke the setup script directly:
 ```
 
 This interactively sets `core.editor`, `ai-commit.issue-prefix`, and `alias.ai-commit` in `~/.gitconfig`. The alias uses the full path to `git-ai-commit` when it is not on `PATH`.
-Before the Git prompts, setup verifies that `ollama` is installed, checks for `phi4-mini`, and offers to pull it if needed.
+Before the Git prompts, setup verifies that `ollama` is installed, checks for `phi4`, and offers to pull it if needed.
 
 After setup, use `git ai-commit` in any repository.
 
@@ -248,11 +248,10 @@ The model is invoked with the full prompt on stdin. When supported by the instal
 `--nowordwrap` is used so the script can handle wrapping itself:
 
 ```sh
-printf '%s\n' "$prompt" | ollama run --nowordwrap phi4-mini
+printf '%s\n' "$prompt" | ollama run --nowordwrap phi4
 ```
 
-`phi4-mini` remains the default because it is small and practical for local use. Larger local models may
-produce richer commit bodies for complex diffs, but this release does not change the default model.
+`phi4` is the default local model for commit generation.
 
 Generated footer lines are filtered before the editor opens:
 
@@ -272,8 +271,8 @@ Generated footer lines are filtered before the editor opens:
 | `ollama: command not found`                | Install Ollama; restart terminal; ensure `ollama` is on `PATH` in the same shell you use for Git                     |
 | `no staged changes to summarize`           | Stage files with `git add`; lockfiles alone are ignored                                                              |
 | `ollama run failed`                        | Run `ollama run --help`; confirm Ollama is healthy and retry in the repo                                             |
-| `empty message from ollama run`            | Retry, reduce diff size, or test `ollama run phi4-mini "test"` manually                                              |
-| `Model phi4-mini is not available locally` | Run `ollama pull phi4-mini`, or rerun `git-ai-commit setup` and accept the pull prompt                               |
+| `empty message from ollama run`            | Retry, reduce diff size, or test `ollama run phi4 "test"` manually                                                   |
+| `Model phi4 is not available locally`      | Run `ollama pull phi4`, or rerun `git-ai-commit setup` and accept the pull prompt                                    |
 | Editor does not open                       | Run `git-ai-commit setup`, or set `core.editor` (e.g. `vim`, `code --wait`, `notepad`)                               |
 | Script errors after clone on Windows       | Run `git config --global core.autocrlf input` in Git Bash, or re-clone with `git clone --config core.autocrlf=input` |
 
@@ -303,8 +302,8 @@ Test-Path "$env:USERPROFILE\.config\git\git-ai-commit\git-ai-commit"
 
 ## Quick checklist
 
-- [ ] Ollama installed; `ollama run phi4-mini "test"` works in your terminal
-- [ ] `phi4-mini` pulled locally, or `git-ai-commit setup` confirmed it
+- [ ] Ollama installed; `ollama run phi4 "test"` works in your terminal
+- [ ] `phi4` pulled locally, or `git-ai-commit setup` confirmed it
 - [ ] macOS/Linux: `brew install git-ai-commit` and `git-ai-commit setup`
 - [ ] Windows: repository cloned; `chmod +x` on both scripts; `git-ai-commit setup` run from Git Bash
 - [ ] `ai-commit` alias, `core.editor`, and `ai-commit.issue-prefix` in global `.gitconfig`

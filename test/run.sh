@@ -182,6 +182,6 @@ EOF
   "$0"
 ' "$script"
 assert_contains "$tmp_root/large_diff_stdin/prompt" "large-diff-marker" "large staged diff reaches ollama stdin"
-assert_contains "$tmp_root/large_diff_stdin/ollama-args" "run --nowordwrap phi4-mini" "nowordwrap flag is used when supported"
+assert_contains "$tmp_root/large_diff_stdin/ollama-args" "run --nowordwrap phi4" "nowordwrap flag is used when supported"
 
 printf 'ok - git-ai-commit smoke tests passed\n'
