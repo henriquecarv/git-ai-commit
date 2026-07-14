@@ -4,35 +4,6 @@ set -u
 
 DEFAULT_ISSUE_PREFIX="AB#"
 BODY_LINE_LENGTH=100
-OLLAMA_MODEL=phi4
-AGENT_PROMPT="Write one high-quality Conventional Commits message for this staged diff.
-Output only the commit message.
-
-Required shape:
-1. Subject line: <type>[optional scope]: <imperative summary>.
-   - Allowed types: feat, fix, docs, style, refactor, perf, test, build, ci, chore.
-   - No period at the end.
-   - Keep it strictly under 72 characters, including any issue prefix.
-2. Blank line.
-3. Body: write one or more explanatory paragraphs for any non-trivial diff.
-   - Explain what changed, why it changed, and the practical impact.
-   - Summarize behavior and intent, not a file-by-file list.
-   - Do not use bullets, markdown fences, headings, analysis preambles, or labels.
-   - Wrap so no line exceeds $BODY_LINE_LENGTH characters.
-4. Optional footers after a blank line, only when explicitly supported by the diff or direct user input.
-   - Never invent issue references, people, email addresses, reviewers, co-authors, or metadata.
-   - Co-authored-by: is allowed only when the exact value is present in the diff.
-   - Refs: is allowed only when the exact reference is present in the diff or was provided directly by the user.
-   - BREAKING CHANGE: is allowed only when the diff clearly shows a breaking change.
-
-Example shape:
-fix: prevent racing of requests
-
-Introduce a request id and dismiss stale responses.
-
-Remove obsolete timeouts that mitigated the race.
-
-Output only the commit message."
 
 usage() {
   cat <<'EOF'
@@ -70,18 +41,30 @@ capture_staged_diff() {
   fi
 }
 
-# --- Ollama model run (diff in prompt) ---------------------------------------
+# --- Cursor Agent run (diff in prompt) ---------------------------------------
 
-ollama_run_supports_nowordwrap() {
-  ollama run --help 2>/dev/null | grep -q -- '--nowordwrap'
+load_agent_prompt() {
+  prompt_file="$(script_real_dir "$0")/.agents/SKILLS/CONVENTIONAL_COMMITS.md"
+  if [ ! -f "$prompt_file" ]; then
+    rm -f "$diff_file"
+    printf 'git-ai-commit: prompt file not found: %s\n' "$prompt_file" >&2
+    exit 1
+  fi
+
+  AGENT_PROMPT=$(cat "$prompt_file")
+  if [ -z "$(printf '%s' "$AGENT_PROMPT" | tr -d '[:space:]')" ]; then
+    rm -f "$diff_file"
+    printf 'git-ai-commit: prompt file is empty: %s\n' "$prompt_file" >&2
+    exit 1
+  fi
 }
 
-run_ollama_prompt() {
-  if ollama_run_supports_nowordwrap; then
-    printf '%s\n' "$1" | ollama run --nowordwrap "$OLLAMA_MODEL"
-  else
-    printf '%s\n' "$1" | ollama run "$OLLAMA_MODEL"
+run_cursor_agent_prompt() {
+  if ! command -v agent >/dev/null 2>&1; then
+    printf 'git-ai-commit: cursor agent not found on PATH\n' >&2
+    return 127
   fi
+  agent -p --output-format text "$1"
 }
 
 show_loading_spinner() {
@@ -108,12 +91,14 @@ generate_commit_message() {
     exit 1
   }
 
+  load_agent_prompt
+
   (
     prompt=$(printf '%s\n\n%s\n%s\n' \
       "$AGENT_PROMPT" \
       'Staged diff:' \
       "$(cat "$diff_file")")
-    run_ollama_prompt "$prompt" >"$msg_file"
+    run_cursor_agent_prompt "$prompt" >"$msg_file"
   ) &
   agent_pid=$!
 
@@ -125,11 +110,11 @@ generate_commit_message() {
   rm -f "$msg_file"
 
   if [ "$agent_status" -ne 0 ]; then
-    printf 'git-ai-commit: ollama run failed\n' >&2
+    printf 'git-ai-commit: cursor agent failed\n' >&2
     exit "$agent_status"
   fi
   if [ -z "$(printf '%s' "$msg" | tr -d '[:space:]')" ]; then
-    printf 'git-ai-commit: empty message from ollama run\n' >&2
+    printf 'git-ai-commit: empty message from agent\n' >&2
     exit 1
   fi
 }

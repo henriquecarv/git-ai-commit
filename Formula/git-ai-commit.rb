@@ -1,16 +1,17 @@
 # frozen_string_literal: true
 
 class GitAiCommit < Formula
-  desc "Generate Conventional Commit messages via Ollama (phi4)"
+  desc "Generate Conventional Commit messages via Cursor Agent"
   homepage "https://github.com/henriquecarv/git-ai-commit"
   url "https://github.com/henriquecarv/git-ai-commit.git", branch: "main"
-  version "2.2.0"
+  version "3.0.0"
   license "MIT"
 
   depends_on "git"
 
   def install
     libexec.install "git-ai-commit", "setup"
+    libexec.install ".agents"
     bin.install_symlink libexec/"git-ai-commit"
   end
 
@@ -20,8 +21,8 @@ class GitAiCommit < Formula
         git-ai-commit setup
 
       This configures core.editor, ai-commit.issue-prefix, and the git ai-commit alias in ~/.gitconfig.
-      Ollama must be installed separately, and phi4 must be available locally.
-      git-ai-commit setup verifies Ollama and can pull phi4 interactively.
+      Cursor CLI Agent must be installed separately and available as `agent` on PATH.
+      git-ai-commit setup verifies `agent --version` before configuring Git.
     EOS
   end
 
@@ -30,15 +31,14 @@ class GitAiCommit < Formula
     assert_match "git-ai-commit setup", shell_output("#{bin}/git-ai-commit --help")
 
     ENV["HOME"] = testpath
-    (testpath/"ollama").write <<~SH
+    (testpath/"agent").write <<~SH
       #!/bin/sh
       case "$1" in
-        list) printf 'phi4:latest\t2.5 GB\n' ;;
-        pull) exit 0 ;;
+        --version) printf 'agent 1.0.0\\n' ;;
         *) exit 0 ;;
       esac
     SH
-    (testpath/"ollama").chmod 0755
+    (testpath/"agent").chmod 0755
     ENV["PATH"] = "#{testpath}:#{ENV["PATH"]}"
 
     pipe_output("#{bin}/git-ai-commit setup", "\n\n")

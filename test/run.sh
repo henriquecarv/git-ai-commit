@@ -13,21 +13,20 @@ trap cleanup EXIT INT TERM
 
 mkdir -p "$tmp_root/bin"
 
-cat >"$tmp_root/bin/ollama" <<'SH'
+cat >"$tmp_root/bin/agent" <<'SH'
 #!/usr/bin/env sh
 set -eu
 
-if [ "$1" = run ] && [ "${2:-}" = --help ]; then
-  printf 'Run a model\n'
-  printf '      --nowordwrap              Do not wrap words\n'
+if [ "${1:-}" = --version ]; then
+  printf 'agent 1.0.0\n'
   exit 0
 fi
 
-printf '%s\n' "$*" >>"$OLLAMA_ARGS"
-cat >"$PROMPT_CAPTURE"
+printf '%s\n' "$*" >>"$AGENT_ARGS"
+printf '%s\n' "${4:-}" >"$PROMPT_CAPTURE"
 cat "$MODEL_OUTPUT"
 SH
-chmod +x "$tmp_root/bin/ollama"
+chmod +x "$tmp_root/bin/agent"
 
 cat >"$tmp_root/bin/git" <<'SH'
 #!/usr/bin/env sh
@@ -38,7 +37,11 @@ case $1 in
     cat "$STAGED_DIFF"
     ;;
   config)
-    if [ "${4:-}" = ai-commit.issue-prefix ]; then
+    if [ "${2:-}" = --global ] && [ "$#" -eq 4 ]; then
+      printf 'SET:%s=%s\n' "$3" "$4" >>"${GIT_CONFIG_LOG:-/dev/null}"
+      exit 0
+    fi
+    if [ "${3:-}" = ai-commit.issue-prefix ]; then
       exit 1
     fi
     exit 1
@@ -70,14 +73,14 @@ assert_contains() {
   file=$1
   text=$2
   label=$3
-  grep -Fq "$text" "$file" || fail "$label"
+  grep -Fq -- "$text" "$file" || fail "$label"
 }
 
 assert_not_contains() {
   file=$1
   text=$2
   label=$3
-  if grep -Fq "$text" "$file"; then
+  if grep -Fq -- "$text" "$file"; then
     fail "$label"
   fi
 }
@@ -92,18 +95,37 @@ run_case() {
   MODEL_OUTPUT="$case_dir/model-output"
   COMMIT_ARGS="$case_dir/commit-args"
   PROMPT_CAPTURE="$case_dir/prompt"
-  OLLAMA_ARGS="$case_dir/ollama-args"
+  AGENT_ARGS="$case_dir/agent-args"
 
-  export STAGED_DIFF MODEL_OUTPUT COMMIT_ARGS PROMPT_CAPTURE OLLAMA_ARGS
+  export STAGED_DIFF MODEL_OUTPUT COMMIT_ARGS PROMPT_CAPTURE AGENT_ARGS
 
   printf 'diff --git a/file b/file\n+changed content\n' >"$STAGED_DIFF"
   : >"$MODEL_OUTPUT"
   : >"$COMMIT_ARGS"
   : >"$PROMPT_CAPTURE"
-  : >"$OLLAMA_ARGS"
+  : >"$AGENT_ARGS"
 
   "$@"
 }
+
+setup_case_dir="$tmp_root/setup_prefers_sibling"
+mkdir -p "$setup_case_dir"
+GIT_CONFIG_LOG="$setup_case_dir/git-config"
+export GIT_CONFIG_LOG
+: >"$GIT_CONFIG_LOG"
+
+cat >"$tmp_root/bin/git-ai-commit" <<'SH'
+#!/usr/bin/env sh
+printf 'old path git-ai-commit should not be used\n' >&2
+exit 1
+SH
+chmod +x "$tmp_root/bin/git-ai-commit"
+
+if ! printf '\n\n' | "$repo_root/setup" >"$setup_case_dir/setup-output" 2>"$setup_case_dir/setup-error"; then
+  fail "setup should succeed with sibling git-ai-commit"
+fi
+assert_contains "$GIT_CONFIG_LOG" "SET:alias.ai-commit=!\"$repo_root/git-ai-commit\"" "setup prefers sibling git-ai-commit"
+assert_not_contains "$GIT_CONFIG_LOG" "SET:alias.ai-commit=!git-ai-commit" "setup ignores stale git-ai-commit on PATH"
 
 run_case preserve_body sh -c '
   cat >"$MODEL_OUTPUT" <<EOF
@@ -166,7 +188,7 @@ if [ -s "$tmp_root/empty_output_fails/commit-args" ]; then
   fail "empty output should not commit"
 fi
 
-run_case large_diff_stdin sh -c '
+run_case large_diff_prompt sh -c '
   i=1
   : >"$STAGED_DIFF"
   while [ "$i" -le 300 ]; do
@@ -177,11 +199,12 @@ run_case large_diff_stdin sh -c '
   cat >"$MODEL_OUTPUT" <<EOF
 fix: read prompts from stdin
 
-Keep the complete staged diff available to the local model.
+Keep the complete staged diff available to Cursor Agent.
 EOF
   "$0"
 ' "$script"
-assert_contains "$tmp_root/large_diff_stdin/prompt" "large-diff-marker" "large staged diff reaches ollama stdin"
-assert_contains "$tmp_root/large_diff_stdin/ollama-args" "run --nowordwrap phi4" "nowordwrap flag is used when supported"
+assert_contains "$tmp_root/large_diff_prompt/prompt" "large-diff-marker" "large staged diff reaches cursor agent prompt"
+assert_contains "$tmp_root/large_diff_prompt/prompt" "Follow Conventional Commits v1.0.0" "prompt skill is loaded"
+assert_contains "$tmp_root/large_diff_prompt/agent-args" "-p --output-format text" "cursor agent text output mode is used"
 
 printf 'ok - git-ai-commit smoke tests passed\n'

@@ -10,13 +10,13 @@ git-ai-commit setup
 
 Prerequisites:
 
-- Ollama 0.5.13+ with `phi4` available locally (`setup` can pull it)
+- Cursor CLI Agent available as `agent` on `PATH`
 - Git 2.x+
 
 ## What `git-ai-commit setup` does
 
-- Verifies `ollama` is on `PATH` (install from `https://ollama.com/download` if missing)
-- Ensures `phi4` is available locally; offers `ollama pull phi4` if not
+- Verifies `agent` is on `PATH` (install from `https://cursor.com/install` if missing)
+- Verifies `agent --version` works before configuring Git
 - Sets `core.editor` in `~/.gitconfig` (interactive prompt)
 - Sets `ai-commit.issue-prefix` (interactive prompt; optional)
 - Sets `alias.ai-commit = !git-ai-commit`
@@ -29,7 +29,7 @@ After setup, use `git ai-commit` in any repository.
 brew upgrade git-ai-commit
 ```
 
-Re-run `git-ai-commit setup` if you want to change your editor, issue prefix, refresh the alias, or re-check Ollama/model availability.
+Re-run `git-ai-commit setup` if you want to change your editor, issue prefix, refresh the alias, or re-check Cursor Agent availability.
 
 ## Local tap (development)
 
@@ -51,6 +51,7 @@ git push origin v1.0.0
 # Build tarball
 mkdir -p /tmp/git-ai-commit-1.0.0
 cp git-ai-commit setup LICENSE README.md /tmp/git-ai-commit-1.0.0/
+cp -R .agents /tmp/git-ai-commit-1.0.0/
 tar -czf git-ai-commit-1.0.0.tar.gz -C /tmp git-ai-commit-1.0.0
 shasum -a 256 git-ai-commit-1.0.0.tar.gz
 ```
