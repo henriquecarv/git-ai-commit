@@ -236,7 +236,7 @@ Edit `git-ai-commit` locally or fork this repository:
 | ---------------------------------------- | --------------------------- | ---------------------------------------------------------------------- |
 | `ai-commit.issue-prefix` (git config)    | _(empty)_                   | Tracker prefix for `git ai-commit <id>`; set via `git-ai-commit setup` |
 | `BODY_LINE_LENGTH`                       | `100`                       | Max width for body lines (`fold`)                                      |
-| `.agents/SKILLS/CONVENTIONAL_COMMITS.md` | Conventional Commits prompt | Instructions passed to Cursor Agent                                    |
+| `.agents/CONVENTIONAL_COMMITS/SKILL.md` | Conventional Commits prompt | Instructions passed to Cursor Agent                                    |
 
 Cursor Agent is invoked with the full prompt in non-interactive text-output mode:
 
@@ -263,7 +263,7 @@ Generated footer lines are filtered before the editor opens:
 | `no staged changes to summarize`           | Stage files with `git add`; lockfiles alone are ignored                                                              |
 | `cursor agent failed`                      | Run `agent --version`; confirm Cursor Agent is authenticated and retry in the repo                                   |
 | `empty message from agent`                 | Retry, reduce diff size, or test `agent -p --output-format text "test"` manually                                     |
-| `prompt file not found`                    | Confirm `.agents/SKILLS/CONVENTIONAL_COMMITS.md` exists beside `git-ai-commit`                                       |
+| `prompt file not found`                    | Confirm `.agents/CONVENTIONAL_COMMITS/SKILL.md` exists beside `git-ai-commit`                                       |
 | `git ai-commit` uses an old backend        | Run `git config --global alias.ai-commit`; rerun this repo's `setup`, or `brew unlink git-ai-commit` if Homebrew is stale |
 | Editor does not open                       | Run `git-ai-commit setup`, or set `core.editor` (e.g. `vim`, `code --wait`, `notepad`)                               |
 | Script errors after clone on Windows       | Run `git config --global core.autocrlf input` in Git Bash, or re-clone with `git clone --config core.autocrlf=input` |
@@ -306,7 +306,7 @@ Test-Path "$env:USERPROFILE\.config\git\git-ai-commit\git-ai-commit"
 | ---------------------------------------- | -------------------------------------------- |
 | `git-ai-commit`                          | Commit CLI (`git ai-commit` target)          |
 | `setup`                                  | Git config setup (via `git-ai-commit setup`) |
-| `.agents/SKILLS/CONVENTIONAL_COMMITS.md` | Cursor Agent commit-message prompt           |
+| `.agents/CONVENTIONAL_COMMITS/SKILL.md` | Cursor Agent commit-message prompt           |
 | `Formula/git-ai-commit.rb`               | Homebrew formula                             |
 | `TAP.md`                                 | Tap and release notes                        |
 | `README.md`                              | This document                                |

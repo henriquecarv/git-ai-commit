@@ -43,15 +43,30 @@ capture_staged_diff() {
 
 # --- Cursor Agent run (diff in prompt) ---------------------------------------
 
+strip_skill_frontmatter() {
+  file=$1
+  first_line=$(head -n 1 "$file")
+  if [ "$first_line" != "---" ]; then
+    cat "$file"
+    return 0
+  fi
+
+  awk '
+    NR == 1 && $0 == "---" { in_frontmatter = 1; next }
+    in_frontmatter && $0 == "---" { in_frontmatter = 0; next }
+    !in_frontmatter { print }
+  ' "$file"
+}
+
 load_agent_prompt() {
-  prompt_file="$(script_real_dir "$0")/.agents/SKILLS/CONVENTIONAL_COMMITS.md"
+  prompt_file="$(script_real_dir "$0")/.agents/CONVENTIONAL_COMMITS/SKILL.md"
   if [ ! -f "$prompt_file" ]; then
     rm -f "$diff_file"
     printf 'git-ai-commit: prompt file not found: %s\n' "$prompt_file" >&2
     exit 1
   fi
 
-  AGENT_PROMPT=$(cat "$prompt_file")
+  AGENT_PROMPT=$(strip_skill_frontmatter "$prompt_file")
   if [ -z "$(printf '%s' "$AGENT_PROMPT" | tr -d '[:space:]')" ]; then
     rm -f "$diff_file"
     printf 'git-ai-commit: prompt file is empty: %s\n' "$prompt_file" >&2
