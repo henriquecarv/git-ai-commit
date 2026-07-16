@@ -23,7 +23,15 @@ if [ "${1:-}" = --version ]; then
 fi
 
 printf '%s\n' "$*" >>"$AGENT_ARGS"
-printf '%s\n' "${4:-}" >"$PROMPT_CAPTURE"
+shift
+[ "${1:-}" = --trust ] && shift
+shift
+shift
+: >"$PROMPT_CAPTURE"
+while [ $# -gt 0 ]; do
+  printf '%s\n' "$1" >>"$PROMPT_CAPTURE"
+  shift
+done
 cat "$MODEL_OUTPUT"
 SH
 chmod +x "$tmp_root/bin/agent"
@@ -204,7 +212,7 @@ EOF
   "$0"
 ' "$script"
 assert_contains "$tmp_root/large_diff_prompt/prompt" "large-diff-marker" "large staged diff reaches cursor agent prompt"
-assert_contains "$tmp_root/large_diff_prompt/prompt" "Follow Conventional Commits v1.0.0" "prompt skill is loaded"
-assert_contains "$tmp_root/large_diff_prompt/agent-args" "-p --output-format text" "cursor agent text output mode is used"
+assert_contains "$tmp_root/large_diff_prompt/prompt" "Conventional Commits v1.0.0" "prompt skill is loaded"
+assert_contains "$tmp_root/large_diff_prompt/agent-args" "-p --trust --output-format text" "cursor agent text output mode is used"
 
 printf 'ok - git-ai-commit smoke tests passed\n'

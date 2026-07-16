@@ -79,7 +79,7 @@ run_cursor_agent_prompt() {
     printf 'git-ai-commit: cursor agent not found on PATH\n' >&2
     return 127
   fi
-  agent -p --output-format text "$1"
+  agent -p --trust --output-format text "$1"
 }
 
 show_loading_spinner() {

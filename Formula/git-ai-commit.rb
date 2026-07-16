@@ -4,7 +4,7 @@ class GitAiCommit < Formula
   desc "Generate Conventional Commit messages via Cursor Agent"
   homepage "https://github.com/henriquecarv/git-ai-commit"
   url "https://github.com/henriquecarv/git-ai-commit.git", branch: "main"
-  version "3.0.1"
+  version "3.0.2"
   license "MIT"
 
   depends_on "git"

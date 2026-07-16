@@ -238,10 +238,10 @@ Edit `git-ai-commit` locally or fork this repository:
 | `BODY_LINE_LENGTH`                       | `100`                       | Max width for body lines (`fold`)                                      |
 | `.agents/CONVENTIONAL_COMMITS/SKILL.md` | Conventional Commits prompt | Instructions passed to Cursor Agent                                    |
 
-Cursor Agent is invoked with the full prompt in non-interactive text-output mode:
+Cursor Agent is invoked with the full prompt in non-interactive text-output mode (`--trust` is required for headless runs in untrusted workspaces):
 
 ```sh
-agent -p --output-format text "$prompt"
+agent -p --trust --output-format text "$prompt"
 ```
 
 Generated footer lines are filtered before the editor opens:
@@ -262,7 +262,8 @@ Generated footer lines are filtered before the editor opens:
 | `cursor agent not found on PATH`           | Install Cursor CLI; restart terminal; ensure `agent` is on `PATH` in the same shell you use for Git                  |
 | `no staged changes to summarize`           | Stage files with `git add`; lockfiles alone are ignored                                                              |
 | `cursor agent failed`                      | Run `agent --version`; confirm Cursor Agent is authenticated and retry in the repo                                   |
-| `empty message from agent`                 | Retry, reduce diff size, or test `agent -p --output-format text "test"` manually                                     |
+| `Workspace Trust Required`                 | Upgrade `git-ai-commit` (uses `--trust` in headless mode); or run `agent -p --trust --output-format text "test"` manually |
+| `empty message from agent`                 | Retry, reduce diff size, or test `agent -p --trust --output-format text "test"` manually                             |
 | `prompt file not found`                    | Confirm `.agents/CONVENTIONAL_COMMITS/SKILL.md` exists beside `git-ai-commit`                                       |
 | `git ai-commit` uses an old backend        | Run `git config --global alias.ai-commit`; rerun this repo's `setup`, or `brew unlink git-ai-commit` if Homebrew is stale |
 | Editor does not open                       | Run `git-ai-commit setup`, or set `core.editor` (e.g. `vim`, `code --wait`, `notepad`)                               |
